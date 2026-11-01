@@ -1,0 +1,63 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: dna-amr-screener
+    seed-parallelism: ${SPRING_APP_SEED_PARALLELISM:16}
+    analyze-parallelism: ${SPRING_APP_ANALYZE_PARALLELISM:48}
+    batch-size: ${SPRING_APP_BATCH_SIZE:64}
+    session-ttl-seconds: ${SPRING_APP_SESSION_TTL_SECONDS:3600}
+  data:
+    redis:
+      gene:
+        host: ${SPRING_DATA_REDIS_GENE_HOST:redis-gene}
+        port: ${SPRING_DATA_REDIS_GENE_PORT:6379}
+        password: ${SPRING_DATA_REDIS_GENE_PASSWORD:}
+        database: ${SPRING_DATA_REDIS_GENE_DATABASE:0}
+        timeout: ${SPRING_DATA_REDIS_GENE_TIMEOUT:10s}
+        lettuce:
+          pool:
+            min-idle: ${SPRING_DATA_REDIS_GENE_MIN_IDLE:4}
+            max-idle: ${SPRING_DATA_REDIS_GENE_MAX_IDLE:32}
+            max-total: ${SPRING_DATA_REDIS_GENE_MAX_TOTAL:64}
+      session:
+        password: ${SPRING_DATA_REDIS_SESSION_PASSWORD:}
+        timeout: ${SPRING_DATA_REDIS_SESSION_TIMEOUT:10s}
+        cluster:
+          nodes: ${SPRING_DATA_REDIS_SESSION_CLUSTER_NODES:redis-session-1:6379,redis-session-2:6379,redis-session-3:6379}
+        lettuce:
+          pool:
+            min-idle: ${SPRING_DATA_REDIS_SESSION_MIN_IDLE:4}
+            max-idle: ${SPRING_DATA_REDIS_SESSION_MAX_IDLE:32}
+            max-total: ${SPRING_DATA_REDIS_SESSION_MAX_TOTAL:64}
+
+screener:
+  lsh:
+    kmer-size: ${SCREENER_LSH_KMER_SIZE:21}
+    num-hashes: ${SCREENER_LSH_NUM_HASHES:100}
+    bands: ${SCREENER_LSH_BANDS:20}
+    rows-per-band: ${SCREENER_LSH_ROWS_PER_BAND:5}
+    max-reads-per-gene: ${SCREENER_LSH_MAX_READS_PER_GENE:80}
+    min-avg-phred: ${SCREENER_LSH_MIN_AVG_PHRED:20.0}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: when_authorized
+  health:
+    redis:
+      enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.example.dna: ${LOG_LEVEL_APP:INFO}
+    io.lettuce: ${LOG_LEVEL_LETTUCE:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

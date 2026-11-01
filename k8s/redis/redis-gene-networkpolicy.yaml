@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-gene-allow-app
+  namespace: base
+spec:
+  podSelector:
+    matchLabels:
+      app: redis-gene
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dna-amr-screener
+      ports:
+        - protocol: TCP
+          port: 6379

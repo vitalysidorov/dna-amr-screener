@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - redis/redis-session.yaml
+  - redis/redis-session-networkpolicy.yaml
+  - redis/redis-gene.yaml
+  - redis/redis-gene-networkpolicy.yaml
+  - app/serviceaccount.yaml
+  - app/secret.yaml
+  - app/configmap.yaml
+  - app/deployment.yaml
+  - app/service.yaml
+  - app/hpa.yaml
+  - ingress/ingress-public.yaml
+  - ingress/ingress-private.yaml
+
+images:
+  - name: dna-amr-screener
+    newTag: v1.0.0

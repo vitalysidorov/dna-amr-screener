@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-app
+  namespace: base
+  labels:
+    app: dna-amr-screener
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dna-amr-screener
+  template:
+    metadata:
+      labels:
+        app: dna-amr-screener
+    spec:
+      serviceAccountName: spring-boot-sa
+      containers:
+        - name: app
+          image: dna-amr-screener:v1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+
+          envFrom:
+            - configMapRef:
+                name: spring-boot-config
+
+          env:
+            - name: SPRING_DATA_REDIS_GENE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: redis-gene-password
+                  optional: true
+            - name: SPRING_DATA_REDIS_SESSION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: redis-session-password
+                  optional: true
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 15

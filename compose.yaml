@@ -1,0 +1,182 @@
+services:
+  redis-gene:
+    image: mirror.gcr.io/library/redis:7.2-alpine
+    container_name: redis-gene
+    command: >
+      redis-server
+      --appendonly yes
+      --save 60 1000
+      --maxmemory 2gb
+      --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+    volumes:
+      - gene-data:/data
+    networks:
+      - dna-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  redis-session-1:
+    image: mirror.gcr.io/library/redis:7.2-alpine
+    container_name: redis-session-1
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly no
+      --save ""
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - session1-data:/data
+    networks:
+      - dna-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  redis-session-2:
+    image: mirror.gcr.io/library/redis:7.2-alpine
+    container_name: redis-session-2
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly no
+      --save ""
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - session2-data:/data
+    networks:
+      - dna-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  redis-session-3:
+    image: mirror.gcr.io/library/redis:7.2-alpine
+    container_name: redis-session-3
+    command: >
+      redis-server
+      --port 6379
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly no
+      --save ""
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - session3-data:/data
+    networks:
+      - dna-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+    restart: unless-stopped
+
+  redis-session-init:
+    image: mirror.gcr.io/library/redis:7.2-alpine
+    container_name: redis-session-init
+    depends_on:
+      redis-session-1:
+        condition: service_healthy
+      redis-session-2:
+        condition: service_healthy
+      redis-session-3:
+        condition: service_healthy
+    networks:
+      - dna-net
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "Checking cluster state..."
+        if redis-cli -h redis-session-1 cluster info 2>/dev/null | grep -q "cluster_state:ok"; then
+          echo "Cluster already OK — skip create"
+          exit 0
+        fi
+        echo "Resetting nodes and creating cluster..."
+        for h in redis-session-1 redis-session-2 redis-session-3; do
+          redis-cli -h $$h FLUSHALL || true
+          redis-cli -h $$h CLUSTER RESET HARD || true
+        done
+        sleep 2
+        yes yes | redis-cli --cluster create \
+          redis-session-1:6379 \
+          redis-session-2:6379 \
+          redis-session-3:6379 \
+          --cluster-replicas 0
+        echo "Cluster created"
+        redis-cli -h redis-session-1 cluster info
+
+  app:
+    build: .
+    container_name: dna-amr-screener
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: "8080"
+      SPRING_DATA_REDIS_GENE_HOST: redis-gene
+      SPRING_DATA_REDIS_GENE_PORT: "6379"
+      SPRING_DATA_REDIS_SESSION_CLUSTER_NODES: "redis-session-1:6379,redis-session-2:6379,redis-session-3:6379"
+      SCREENER_LSH_KMER_SIZE: "15"
+      SCREENER_LSH_NUM_HASHES: "100"
+      SCREENER_LSH_BANDS: "20"
+      SCREENER_LSH_ROWS_PER_BAND: "5"
+      SCREENER_MAX_READS_PER_GENE: "80"
+      LOG_LEVEL_APP: "INFO"
+    depends_on:
+      redis-gene:
+        condition: service_healthy
+      redis-session-1:
+        condition: service_healthy
+      redis-session-2:
+        condition: service_healthy
+      redis-session-3:
+        condition: service_healthy
+      redis-session-init:
+        condition: service_completed_successfully
+    networks:
+      - dna-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  gene-data:
+  session1-data:
+  session2-data:
+  session3-data:
+
+networks:
+  dna-net:
+    driver: bridge

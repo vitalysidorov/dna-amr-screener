@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress-private
+  namespace: base
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/whitelist-source-range: "CHANGE_ME"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - amr.example.com
+      secretName: app-tls-secret
+  rules:
+    - host: amr.example.com
+      http:
+        paths:
+          - path: /api/card/
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-boot-service
+                port:
+                  number: 8080

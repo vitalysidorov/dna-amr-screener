@@ -1,0 +1,42 @@
+# Среда разработки и системные файлы IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Локальные сборки и артефакты Java (Maven)
+**/target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# Локальные сборки и временные папки C++ (CMake)
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+**/libdna_hasher.so
+**/dna_hasher.dll
+**/_deps/
+
+# Скрипты тестирования и виртуальные окружения Python
+**/venv/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Временные файлы данных и тяжелые ДНК-файлы в корне
+*.fastq
+*.fastq.gz
+*.fasta
+*.sam
+*.bam
+
+# Локальные логи и Git-информация
+.git/
+.gitignore
+.gitattributes
+*.log

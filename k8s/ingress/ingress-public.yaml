@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress-public
+  namespace: base
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/auth-tls-secret: "base/client-ca-secret"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/auth-tls-verify-depth: "2"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - amr.example.com
+      secretName: app-tls-secret
+  rules:
+    - host: amr.example.com
+      http:
+        paths:
+          - path: /api/v1/
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-boot-service
+                port:
+                  number: 8080

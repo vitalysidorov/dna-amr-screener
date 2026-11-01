@@ -1,0 +1,34 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: client-ca-selfsigned
+  namespace: base
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: client-root-ca
+  namespace: base
+spec:
+  isCA: true
+  commonName: AMR Client Root CA
+  secretName: client-root-ca-secret
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: client-ca-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: client-ca-issuer
+  namespace: base
+spec:
+  ca:
+    secretName: client-root-ca-secret
