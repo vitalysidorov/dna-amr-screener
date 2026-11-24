@@ -8,78 +8,83 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class DbVersionService {
 
-    public static final String ACTIVE_KEY = "db:active";
     public static final String BLUE = "blue";
     public static final String GREEN = "green";
 
     private final StringRedisTemplate geneRedis;
+    private final KmerPrefixService kmerPrefixService;
+    private final ConcurrentHashMap<String, String> activeCache = new ConcurrentHashMap<>();
 
-    private final AtomicReference<String> activeSlotCache = new AtomicReference<>();
-
-    public DbVersionService(@Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis) {
+    public DbVersionService(@Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis, KmerPrefixService kmerPrefixService) {
         this.geneRedis = geneRedis;
+        this.kmerPrefixService = kmerPrefixService;
     }
 
-    public String getActiveSlot() {
-        String cached = activeSlotCache.get();
-        if (cached != null) {
-            return cached;
-        }
-        return refreshActiveSlot();
+    private static String activeKey(String prefix) {
+        return "db:" + prefix + ":active";
     }
 
-    public synchronized String refreshActiveSlot() {
-        String active = geneRedis.opsForValue().get(ACTIVE_KEY);
-        if (active == null || (!BLUE.equals(active) && !GREEN.equals(active))) {
+    public String getActiveSlot(String prefix) {
+        kmerPrefixService.requirePrefix(prefix);
+        String cached = activeCache.get(prefix);
+        if (cached != null) return cached;
+        return refreshActiveSlot(prefix);
+    }
+
+    public String refreshActiveSlot(String prefix) {
+        kmerPrefixService.requirePrefix(prefix);
+        String active = geneRedis.opsForValue().get(activeKey(prefix));
+        if (!BLUE.equals(active) && !GREEN.equals(active)) {
             active = BLUE;
         }
-        activeSlotCache.set(active);
+        activeCache.put(prefix, active);
         return active;
     }
 
-    public String getInactiveSlot() {
-        return BLUE.equals(getActiveSlot()) ? GREEN : BLUE;
+    public String getInactiveSlot(String prefix) {
+        return BLUE.equals(getActiveSlot(prefix)) ? GREEN : BLUE;
     }
 
-    public String switchActive() {
-        String newActive = getInactiveSlot();
-        geneRedis.opsForValue().set(ACTIVE_KEY, newActive);
-        activeSlotCache.set(newActive);
-        return newActive;
+    public String switchActive(String prefix) {
+        kmerPrefixService.requirePrefix(prefix);
+        String next = getInactiveSlot(prefix);
+        geneRedis.opsForValue().set(activeKey(prefix), next);
+        activeCache.put(prefix, next);
+        return next;
     }
 
-    public void setActiveSlot(String slot) {
+    public void setActiveSlot(String prefix, String slot) {
+        kmerPrefixService.requirePrefix(prefix);
         if (!BLUE.equals(slot) && !GREEN.equals(slot)) {
-            throw new IllegalArgumentException("slot must be 'blue' or 'green'");
+            throw new IllegalArgumentException("slot must be blue|green");
         }
-        geneRedis.opsForValue().set(ACTIVE_KEY, slot);
-        activeSlotCache.set(slot);
+        geneRedis.opsForValue().set(activeKey(prefix), slot);
+        activeCache.put(prefix, slot);
     }
 
-    public String activePrefix() {
-        return getActiveSlot() + ":";
+    public String activeDataPrefix(String prefix) {
+        return prefix + ":" + getActiveSlot(prefix) + ":";
     }
 
-    public String inactivePrefix() {
-        return getInactiveSlot() + ":";
+    public String inactiveDataPrefix(String prefix) {
+        return prefix + ":" + getInactiveSlot(prefix) + ":";
     }
 
-    public long clearSlot(String slot) {
+    public long clearSlot(String prefix, String slot) {
+        kmerPrefixService.requirePrefix(prefix);
         if (!BLUE.equals(slot) && !GREEN.equals(slot)) {
-            throw new IllegalArgumentException("slot must be 'blue' or 'green'");
+            throw new IllegalArgumentException("slot must be blue|green");
         }
-
         long deleted = 0;
         ScanOptions options = ScanOptions.scanOptions()
-                .match(slot + ":*")
+                .match(prefix + ":" + slot + ":*")
                 .count(1000)
                 .build();
-
         try (Cursor<String> cursor = geneRedis.scan(options)) {
             List<String> batch = new ArrayList<>(500);
             while (cursor.hasNext()) {
@@ -96,17 +101,20 @@ public class DbVersionService {
         return deleted;
     }
 
-    public DbStatus status() {
-        String active = getActiveSlot();
-        long blueKeys = countKeys(BLUE);
-        long greenKeys = countKeys(GREEN);
-        return new DbStatus(active, blueKeys, greenKeys);
+    public DbStatus status(String prefix) {
+        kmerPrefixService.requirePrefix(prefix);
+        return new DbStatus(
+                prefix,
+                getActiveSlot(prefix),
+                countKeys(prefix, BLUE),
+                countKeys(prefix, GREEN)
+        );
     }
 
-    private long countKeys(String slot) {
+    private long countKeys(String prefix, String slot) {
         long count = 0;
         ScanOptions options = ScanOptions.scanOptions()
-                .match(slot + ":*")
+                .match(prefix + ":" + slot + ":*")
                 .count(1000)
                 .build();
         try (Cursor<String> cursor = geneRedis.scan(options)) {
@@ -118,5 +126,5 @@ public class DbVersionService {
         return count;
     }
 
-    public record DbStatus(String activeSlot, long blueKeyCount, long greenKeyCount) {}
+    public record DbStatus(String prefix, String activeSlot, long blueKeyCount, long greenKeyCount) {}
 }

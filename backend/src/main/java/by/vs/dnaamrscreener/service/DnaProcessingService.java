@@ -20,20 +20,60 @@ public class DnaProcessingService {
     private final StringRedisTemplate geneRedis;
     private final StringRedisTemplate sessionRedis;
     private final DbVersionService versionService;
+    private final KmerPrefixService kmerPrefixService;
     
     @Value("${spring.application.session-ttl-seconds:3600}")
     private long sessionTtlSeconds;
     @Value("${screener.lsh.max-reads-per-gene}")
     private int maxReadsPerGene;
+    @Value("${screener.number-of-candidates}")
+    private long numberOfCandidates;
+
+    @Value("${screener.hit-criteria.strict.primary.min-identity}")
+    private double strictPrimaryMinIdentity;
+    @Value("${screener.hit-criteria.strict.primary.min-breadth-1x}")
+    private double strictPrimaryMinBreadth1x;
+    @Value("${screener.hit-criteria.strict.primary.min-breadth-2x}")
+    private double strictPrimaryMinBreadth2x;
+    @Value("${screener.hit-criteria.strict.primary.min-mean-depth}")
+    private double strictPrimaryMinMeanDepth;
+
+    @Value("${screener.hit-criteria.strict.secondary.min-identity}")
+    private double strictSecondaryMinIdentity;
+    @Value("${screener.hit-criteria.strict.secondary.min-breadth-1x}")
+    private double strictSecondaryMinBreadth1x;
+    @Value("${screener.hit-criteria.strict.secondary.min-breadth-2x}")
+    private double strictSecondaryMinBreadth2x;
+    @Value("${screener.hit-criteria.strict.secondary.min-mean-depth}")
+    private double strictSecondaryMinMeanDepth;
+
+    @Value("${screener.hit-criteria.relaxed.primary.min-identity}")
+    private double relaxedPrimaryMinIdentity;
+    @Value("${screener.hit-criteria.relaxed.primary.min-breadth-1x}")
+    private double relaxedPrimaryMinBreadth1x;
+    @Value("${screener.hit-criteria.relaxed.primary.min-breadth-2x}")
+    private double relaxedPrimaryMinBreadth2x;
+    @Value("${screener.hit-criteria.relaxed.primary.min-mean-depth}")
+    private double relaxedPrimaryMinMeanDepth;
+
+    @Value("${screener.hit-criteria.relaxed.secondary.min-identity}")
+    private double relaxedSecondaryMinIdentity;
+    @Value("${screener.hit-criteria.relaxed.secondary.min-breadth-1x}")
+    private double relaxedSecondaryMinBreadth1x;
+    @Value("${screener.hit-criteria.relaxed.secondary.min-breadth-2x}")
+    private double relaxedSecondaryMinBreadth2x;
+    @Value("${screener.hit-criteria.relaxed.secondary.min-mean-depth}")
+    private double relaxedSecondaryMinMeanDepth;
 
     public DnaProcessingService(
             @Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis,
             @Qualifier("sessionRedisTemplate") StringRedisTemplate sessionRedis,
-            DbVersionService versionService) {
+            DbVersionService versionService, KmerPrefixService kmerPrefixService) {
         
         this.geneRedis = geneRedis;
         this.sessionRedis = sessionRedis;
         this.versionService = versionService;
+        this.kmerPrefixService = kmerPrefixService;
     }
 
     public enum DetectionProfile {
@@ -41,13 +81,13 @@ public class DnaProcessingService {
         RELAXED
     }
 
-    public void queryLshAndIncrementDynamic(String readSequence, String sessionId, int kmerSize,
+    public void queryLshAndIncrementDynamic(String readSequence, String sessionId, String kmerPrefix, int kmerSize,
             int numHashes, int bands, int rowsPerBand) {
 
         long[] signature = new long[numHashes];
         DNAHasherLib.INSTANCE.compute_minhash_jna(readSequence, kmerSize, numHashes, signature);
 
-        final String prefix = versionService.activePrefix();
+        final String versionPrefix = versionService.activeDataPrefix(kmerPrefix);
         final String zsetKey = hitsKey(sessionId);
 
         List<String> bucketKeys = new ArrayList<>(bands);
@@ -59,7 +99,7 @@ public class DnaProcessingService {
             long[] subArray = Arrays.copyOfRange(signature, startIdx, startIdx + rowsPerBand);
             long bandHash = DNAHasherLib.INSTANCE.XXH3_64bits_withSeed(
                     subArray, subArray.length, band);
-            bucketKeys.add(prefix + "lsh:b:" + band + ":h:" + bandHash);
+            bucketKeys.add(versionPrefix + kmerPrefix + "lsh:b:" + band + ":h:" + bandHash);
         }
 
         if (bucketKeys.isEmpty()) {
@@ -114,15 +154,15 @@ public class DnaProcessingService {
         });
     }
 
-    public List<ReportResult> verifyCandidatesFromRedis(String sessionId, DetectionProfile profile) {
+    public List<ReportResult> verifyCandidatesFromRedis(String sessionId, DetectionProfile profile, String kmerPrefix) {
         List<ReportResult> report = new ArrayList<>();
         Set<String> touchedGenes = new HashSet<>();
         String redisZsetKey = hitsKey(sessionId);
-        final String prefix = versionService.activePrefix();
+        final String prefix = versionService.activeDataPrefix(kmerPrefix);
 
         try {
             Set<ZSetOperations.TypedTuple<String>> candidates =
-                    sessionRedis.opsForZSet().reverseRangeWithScores(redisZsetKey, 0, 149);
+                    sessionRedis.opsForZSet().reverseRangeWithScores(redisZsetKey, 0, numberOfCandidates);
 
             if (candidates == null || candidates.isEmpty()) {
                 return report;
@@ -225,10 +265,10 @@ public class DnaProcessingService {
         }
     }
 
-    public void seedReferenceGeneWithPrefix(String prefix, String geneId, String sequence, String antibiotic,
+    public void seedReferenceGeneWithPrefix(String versionPrefix, String kmerPrefix, String geneId, String sequence, String antibiotic,
                                             Integer kmer, Integer hashes, Integer bands, Integer rows) {
 
-        String metaKey = prefix + "gene:meta:" + geneId;
+        String metaKey = versionPrefix + "gene:meta:" + geneId;
 
         long[] signature = new long[hashes];
         DNAHasherLib.INSTANCE.compute_minhash_jna(sequence, kmer, hashes, signature);
@@ -249,25 +289,29 @@ public class DnaProcessingService {
                 long bandHash = DNAHasherLib.INSTANCE.XXH3_64bits_withSeed(
                         subArray, subArray.length, band);
 
-                String bucketKey = prefix + "lsh:b:" + band + ":h:" + bandHash;
+                String bucketKey = versionPrefix + kmerPrefix + "lsh:b:" + band + ":h:" + bandHash;
                 connection.setCommands().sAdd(bucketKey.getBytes(), geneId.getBytes());
             }
             return null;
         });
     }
 
-    private static boolean isStrictHit(double id, double b1x, double b2x, double meanDepth) {
-        if (id >= 0.95 && b1x >= 0.80 && (b2x >= 0.40 || meanDepth >= 5.0)) {
+    private boolean isStrictHit(double id, double b1x, double b2x, double meanDepth) {
+        if (id >= strictPrimaryMinIdentity && b1x >= strictPrimaryMinBreadth1x &&
+                (b2x >= strictPrimaryMinBreadth2x || meanDepth >= strictPrimaryMinMeanDepth)) {
             return true;
         }
-        return id >= 0.90 && b1x >= 0.80 && (b2x >= 0.50 || meanDepth >= 8.0);
+        return id >= strictSecondaryMinIdentity && b1x >= strictSecondaryMinBreadth1x
+                && (b2x >= strictSecondaryMinBreadth2x || meanDepth >= strictSecondaryMinMeanDepth);
     }
 
-    private static boolean isRelaxedHit(double id, double b1x, double b2x, double meanDepth) {
-        if (id >= 0.90 && b1x >= 0.70 && (b2x >= 0.30 || meanDepth >= 3.0)) {
+    private boolean isRelaxedHit(double id, double b1x, double b2x, double meanDepth) {
+        if (id >= relaxedPrimaryMinIdentity && b1x >= relaxedPrimaryMinBreadth1x &&
+                (b2x >= relaxedPrimaryMinBreadth2x || meanDepth >= relaxedPrimaryMinMeanDepth)) {
             return true;
         }
-        return id >= 0.85 && b1x >= 0.75 && (b2x >= 0.40 || meanDepth >= 5.0);
+        return id >= relaxedSecondaryMinIdentity && b1x >= relaxedSecondaryMinBreadth1x
+                && (b2x >= relaxedSecondaryMinBreadth2x || meanDepth >= relaxedSecondaryMinMeanDepth);
     }
 
     private static String hitsKey(String sessionId) {

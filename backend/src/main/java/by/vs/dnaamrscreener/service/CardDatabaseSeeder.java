@@ -24,23 +24,35 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CardDatabaseSeeder implements CommandLineRunner {
 
     private static final String INIT_KEY = "system:card:initialized";
+    private static final String K21_KEY = "k21";
+    private static final String K17_KEY = "k17";
 
-    @Value("${spring.application.analyze-parallelism:16}")
-    private int analyzeParallelism;
+
+    @Value("${spring.application.seed-parallelism}")
+    private int seedParallelism;
 
     private final DnaProcessingService processingService;
     private final StringRedisTemplate geneRedis;
     private final GeneParserService geneParserService;
     private final DbVersionService versionService;
 
-    @Value("${screener.lsh.kmer-size}")
-    private Integer defKmer;
-    @Value("${screener.lsh.num-hashes}")
-    private Integer defHashes;
-    @Value("${screener.lsh.bands}")
-    private Integer defBands;
-    @Value("${screener.lsh.rows-per-band}")
-    private Integer defRows;
+    @Value("${screener.lsh.strict.kmer-size}")
+    private Integer defStrictKmer;
+    @Value("${screener.lsh.strict.num-hashes}")
+    private Integer defStrictHashes;
+    @Value("${screener.lsh.strict.bands}")
+    private Integer defStrictBands;
+    @Value("${screener.lsh.strict.rows-per-band}")
+    private Integer defStrictRows;
+
+    @Value("${screener.lsh.relaxed.kmer-size}")
+    private Integer defRelaxedKmer;
+    @Value("${screener.lsh.relaxed.num-hashes}")
+    private Integer defRelaxedHashes;
+    @Value("${screener.lsh.relaxed.bands}")
+    private Integer defRelaxedBands;
+    @Value("${screener.lsh.relaxed.rows-per-band}")
+    private Integer defRelaxedRows;
 
     public CardDatabaseSeeder(@Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis,
                               DnaProcessingService processingService,
@@ -55,7 +67,8 @@ public class CardDatabaseSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        if (Boolean.TRUE.equals(geneRedis.hasKey(INIT_KEY))) {
+        if (Boolean.TRUE.equals(geneRedis.hasKey(INIT_KEY + K21_KEY)) &&
+                Boolean.TRUE.equals(geneRedis.hasKey(INIT_KEY + K17_KEY))) {
             log.info("[CARD] база данных CARD уже проиндексирована");
             return;
         }
@@ -69,8 +82,11 @@ public class CardDatabaseSeeder implements CommandLineRunner {
             return;
         }
 
-        versionService.setActiveSlot(DbVersionService.BLUE);
-        final String prefix = versionService.activePrefix();
+        versionService.setActiveSlot(K21_KEY, DbVersionService.BLUE);
+        versionService.setActiveSlot(K17_KEY, DbVersionService.BLUE);
+
+        final String prefixForStrict = versionService.activeDataPrefix(K21_KEY);
+        final String prefixForRelaxed = versionService.activeDataPrefix(K17_KEY);
 
         List<String[]> geneBuffer = new ArrayList<>();
 
@@ -114,7 +130,7 @@ public class CardDatabaseSeeder implements CommandLineRunner {
 
         int total = geneBuffer.size();
         AtomicInteger failed = new AtomicInteger();
-        Semaphore semaphore = new Semaphore(analyzeParallelism);
+        Semaphore semaphore = new Semaphore(seedParallelism);
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<?>> futures = new ArrayList<>(total);
@@ -124,11 +140,19 @@ public class CardDatabaseSeeder implements CommandLineRunner {
                     semaphore.acquireUninterruptibly();
                     try {
                         processingService.seedReferenceGeneWithPrefix(
-                                prefix,
+                                prefixForStrict,
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                defKmer, defHashes, defBands, defRows);
+                                K21_KEY,
+                                defStrictKmer, defStrictHashes, defStrictBands, defStrictRows);
+                        processingService.seedReferenceGeneWithPrefix(
+                                prefixForRelaxed,
+                                geneData[0],
+                                geneData[1],
+                                geneData[2],
+                                K17_KEY,
+                                defRelaxedKmer, defRelaxedHashes, defRelaxedBands, defRelaxedRows);
                     } catch (Exception e) {
                         failed.incrementAndGet();
                         log.error("[CARD] failed to seed gene {}", geneData[0], e);
@@ -148,7 +172,8 @@ public class CardDatabaseSeeder implements CommandLineRunner {
             return;
         }
 
-        geneRedis.opsForValue().set(INIT_KEY, "true");
+        geneRedis.opsForValue().set(INIT_KEY + K21_KEY, "true");
+        geneRedis.opsForValue().set(INIT_KEY + K17_KEY, "true");
         long duration = System.currentTimeMillis() - startTime;
         log.info("[CARD] проиндексировано генов: {}. Время: {} ms", total, duration);
     }

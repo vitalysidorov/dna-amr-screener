@@ -3,6 +3,7 @@ package by.vs.dnaamrscreener.controller;
 import by.vs.dnaamrscreener.dto.ReportResult;
 import by.vs.dnaamrscreener.exception.FileAlreadyProcessingException;
 import by.vs.dnaamrscreener.service.DnaProcessingService;
+import by.vs.dnaamrscreener.service.KmerPrefixService;
 import jakarta.servlet.http.HttpServletRequest;
 
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class DnaAnalysisController {
 
     private final StringRedisTemplate sessionRedis;
     private final DnaProcessingService processingService;
+    private final KmerPrefixService kmerPrefixService;
 
     @Value("${spring.application.analyze-parallelism}")
     private int analyzeParallelism;
@@ -37,24 +39,35 @@ public class DnaAnalysisController {
     @Value("${screener.lsh.min-avg-phred}")
     private double minAvgPhred = 20.0;
 
-    @Value("${screener.lsh.kmer-size}")
-    private Integer defKmer;
-    @Value("${screener.lsh.num-hashes}")
-    private Integer defHashes;
-    @Value("${screener.lsh.bands}")
-    private Integer defBands;
-    @Value("${screener.lsh.rows-per-band}")
-    private Integer defRows;
+    @Value("${screener.lsh.k21.kmer-size}")
+    private Integer defKmerK21;
+    @Value("${screener.lsh.k21.num-hashes}")
+    private Integer defHashesK21;
+    @Value("${screener.lsh.k21.bands}")
+    private Integer defBandsK21;
+    @Value("${screener.lsh.k21.rows-per-band}")
+    private Integer defRowsK21;
+
+    @Value("${screener.lsh.k17.kmer-size}")
+    private Integer defKmerK17;
+    @Value("${screener.lsh.k17.num-hashes}")
+    private Integer defHashesK17;
+    @Value("${screener.lsh.k17.bands}")
+    private Integer defBandsK17;
+    @Value("${screener.lsh.k17.rows-per-band}")
+    private Integer defRowsK17;
 
     public DnaAnalysisController(@Qualifier("sessionRedisTemplate") StringRedisTemplate sessionRedis,
-                                 DnaProcessingService processingService) {
+                                 DnaProcessingService processingService, KmerPrefixService kmerPrefixService) {
         this.sessionRedis = sessionRedis;
         this.processingService = processingService;
+        this.kmerPrefixService = kmerPrefixService;
     }
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     public ResponseEntity<?> analyzeStream(
             @RequestParam String sessionId,
+            @RequestParam(defaultValue = "k21") String kmerPrefix,
             @RequestParam(defaultValue = "strict") String profile,
             @RequestParam(defaultValue = "true") boolean finalize,
 
@@ -66,10 +79,29 @@ public class DnaAnalysisController {
 
             HttpServletRequest request) {
 
-        final int finalKmer = (kmerSize != null) ? kmerSize : defKmer;
-        final int finalHashes = (numHashes != null) ? numHashes : defHashes;
-        final int finalBands = (bands != null) ? bands : defBands;
-        final int finalRows = (rowsPerBand != null) ? rowsPerBand : defRows;
+        int currentKmer, currentHashes, currentBands, currentRows;
+        final String finalKmerPrefix = kmerPrefix.toLowerCase();
+
+        if (finalKmerPrefix.equalsIgnoreCase("k21")) {
+            currentKmer = defKmerK21;
+            currentHashes = defHashesK21;
+            currentBands = defBandsK21;
+            currentRows = defRowsK21;
+        } else if (finalKmerPrefix.equalsIgnoreCase("k17")) {
+            currentKmer = defKmerK17;
+            currentHashes = defHashesK17;
+            currentBands = defBandsK17;
+            currentRows = defRowsK17;
+        } else if (kmerPrefixService.isIndexExists(finalKmerPrefix) && isBetween(kmerSize, 1, 32) &&
+                isBetween(numHashes, 1, 1024)
+                && bands >= 1 && rowsPerBand >= 1 && (bands * rowsPerBand == numHashes)) {
+            currentKmer = kmerSize;
+            currentHashes = numHashes;
+            currentBands = bands;
+            currentRows = rowsPerBand;
+        } else {
+            throw new IllegalArgumentException("invalid prefix or headers");
+        }
 
         DnaProcessingService.DetectionProfile detProfile = "relaxed".equalsIgnoreCase(profile)
                 ? DnaProcessingService.DetectionProfile.RELAXED
@@ -117,8 +149,8 @@ public class DnaAnalysisController {
                 batchFutures.add(executor.submit(() -> {
                     semaphore.acquireUninterruptibly();
                     try {
-                        processingService.queryLshAndIncrementDynamic(seq, sessionId, finalKmer,
-                                finalHashes, finalBands, finalRows);
+                        processingService.queryLshAndIncrementDynamic(seq, sessionId, finalKmerPrefix, currentKmer,
+                                currentHashes, currentBands, currentRows);
 
                         long n = processed.incrementAndGet();
                         if (n % 10_000 == 0) {
@@ -152,7 +184,7 @@ public class DnaAnalysisController {
             }
 
             List<ReportResult> report = processingService.verifyCandidatesFromRedis(
-                    sessionId, detProfile);
+                    sessionId, detProfile, finalKmerPrefix);
 
             releaseLock(lockKey);
 
@@ -200,5 +232,9 @@ public class DnaAnalysisController {
             sum += quality.charAt(i) - 33;
         }
         return (double) sum / quality.length();
+    }
+
+    private static boolean isBetween(int value, int min, int max) {
+        return value >= min && value <= max;
     }
 }
