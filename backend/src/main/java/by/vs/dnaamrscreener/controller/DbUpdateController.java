@@ -107,8 +107,9 @@ public class DbUpdateController {
             currentHashes = defHashesK17;
             currentBands = defBandsK17;
             currentRows = defRowsK17;
-        } else if (kmerPrefixService.isIndexExists(finalKmerPrefix) && kmerSize != null && numHashes != null
-                && bands != null && rowsPerBand != null) {
+        } else if (kmerPrefixService.isIndexExists(finalKmerPrefix) && isBetween(kmerSize, 1, 32) &&
+                isBetween(numHashes, 1, 1024)
+                && bands >= 1 && rowsPerBand >= 1 && (bands * rowsPerBand == numHashes)) {
             currentKmer = kmerSize;
             currentHashes = numHashes;
             currentBands = bands;
@@ -290,10 +291,10 @@ public class DbUpdateController {
                     try {
                         processingService.seedReferenceGeneWithPrefix(
                                 currentDbPrefix,
+                                finalKmerPrefix,
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                finalKmerPrefix,
                                 currentKmer, currentHashes, currentBands, currentRows);
                     } catch (Exception e) {
                         failed.incrementAndGet();
@@ -311,11 +312,19 @@ public class DbUpdateController {
 
         if (failed.get() > 0) {
             log.error("[CARD] импорт завершён с ошибками: {} из {}", failed.get(), total);
-            throw new RuntimeException();
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "partial_failure",
+                    "targetSlot", currentDbPrefix,
+                    "genesLoaded", total - failed.get(),
+                    "genesFailed", failed.get()
+            ));
         }
 
         long duration = System.currentTimeMillis() - startTime;
         log.info("[CARD] проиндексировано генов: {}. Время: {} ms", total, duration);
+
+        kmerPrefixService.addNewIndex(
+                finalKmerPrefix, currentKmer, currentHashes, currentBands, currentRows);
 
         return ResponseEntity.ok(Map.of(
                 "createdIndex", finalKmerPrefix,

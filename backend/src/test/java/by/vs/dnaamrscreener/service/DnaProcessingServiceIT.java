@@ -16,20 +16,16 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * End-to-end path: seed reference gene → MinHash/LSH query → exact verify.
- * Requires Docker (Redis) and libdna_hasher on jna.library.path / LD_LIBRARY_PATH.
- */
 @Testcontainers(disabledWithoutDocker = true)
 @EnabledIf("by.vs.dnaamrscreener.support.RedisContainerSupport#dockerAvailable")
 class DnaProcessingServiceIT {
 
-    private static final int K = 15;
+    private static final String KMER_PREFIX = "k21";
+    private static final int K = 21;
     private static final int HASHES = 100;
-    private static final int BANDS = 20;
-    private static final int ROWS = 5;
+    private static final int BANDS = 25;
+    private static final int ROWS = 4;
 
-    // ~90bp synthetic gene
     private static final String GENE_SEQ =
             "ATGAAACGCATTAGCACCACCATTACCACCACCATCACCATTACCACAGGTAACGGTGCGGGCTGA"
                     + "ACGTACGTACGTACGTACGTACGTACGTACG";
@@ -51,26 +47,48 @@ class DnaProcessingServiceIT {
         sessionRedis = RedisContainerSupport.createTemplate(redis);
         geneRedis.getConnectionFactory().getConnection().serverCommands().flushAll();
 
-        versionService = new DbVersionService(geneRedis);
-        versionService.setActiveSlot(DbVersionService.BLUE);
+        KmerPrefixService kmerPrefixService = new KmerPrefixService(geneRedis);
+        versionService = new DbVersionService(geneRedis, kmerPrefixService);
+        versionService.setActiveSlot(KMER_PREFIX, DbVersionService.BLUE);
 
-        processingService = new DnaProcessingService(geneRedis, sessionRedis, versionService);
+        processingService = new DnaProcessingService(
+                geneRedis, sessionRedis, versionService, kmerPrefixService);
         ReflectionTestUtils.setField(processingService, "sessionTtlSeconds", 600L);
         ReflectionTestUtils.setField(processingService, "maxReadsPerGene", 80);
+        ReflectionTestUtils.setField(processingService, "numberOfCandidates", 149L);
+
+        ReflectionTestUtils.setField(processingService, "strictPrimaryMinIdentity", 0.95);
+        ReflectionTestUtils.setField(processingService, "strictPrimaryMinBreadth1x", 0.80);
+        ReflectionTestUtils.setField(processingService, "strictPrimaryMinBreadth2x", 0.40);
+        ReflectionTestUtils.setField(processingService, "strictPrimaryMinMeanDepth", 5.0);
+        ReflectionTestUtils.setField(processingService, "strictSecondaryMinIdentity", 0.90);
+        ReflectionTestUtils.setField(processingService, "strictSecondaryMinBreadth1x", 0.80);
+        ReflectionTestUtils.setField(processingService, "strictSecondaryMinBreadth2x", 0.50);
+        ReflectionTestUtils.setField(processingService, "strictSecondaryMinMeanDepth", 8.0);
+
+        ReflectionTestUtils.setField(processingService, "relaxedPrimaryMinIdentity", 0.90);
+        ReflectionTestUtils.setField(processingService, "relaxedPrimaryMinBreadth1x", 0.70);
+        ReflectionTestUtils.setField(processingService, "relaxedPrimaryMinBreadth2x", 0.30);
+        ReflectionTestUtils.setField(processingService, "relaxedPrimaryMinMeanDepth", 3.0);
+        ReflectionTestUtils.setField(processingService, "relaxedSecondaryMinIdentity", 0.85);
+        ReflectionTestUtils.setField(processingService, "relaxedSecondaryMinBreadth1x", 0.75);
+        ReflectionTestUtils.setField(processingService, "relaxedSecondaryMinBreadth2x", 0.40);
+        ReflectionTestUtils.setField(processingService, "relaxedSecondaryMinMeanDepth", 5.0);
     }
 
     @Test
     void seed_and_detect_identical_read_strict() {
-        String prefix = versionService.activePrefix();
+        String versionPrefix = versionService.activeDataPrefix(KMER_PREFIX);
         processingService.seedReferenceGeneWithPrefix(
-                prefix, GENE_ID, GENE_SEQ, "beta-lactams", K, HASHES, BANDS, ROWS);
+                versionPrefix, KMER_PREFIX, GENE_ID, GENE_SEQ, "beta-lactams",
+                K, HASHES, BANDS, ROWS);
 
         String sessionId = UUID.randomUUID().toString();
-        // identical sequence should hit LSH buckets and pass strict thresholds
-        processingService.queryLshAndIncrementDynamic(GENE_SEQ, sessionId, K, HASHES, BANDS, ROWS);
+        processingService.queryLshAndIncrementDynamic(
+                GENE_SEQ, sessionId, KMER_PREFIX, K, HASHES, BANDS, ROWS);
 
         List<ReportResult> report = processingService.verifyCandidatesFromRedis(
-                sessionId, DnaProcessingService.DetectionProfile.STRICT);
+                sessionId, DnaProcessingService.DetectionProfile.STRICT, KMER_PREFIX);
 
         assertFalse(report.isEmpty(), "expected at least one hit for identical gene sequence");
         ReportResult hit = report.stream()
@@ -78,21 +96,24 @@ class DnaProcessingServiceIT {
                 .findFirst()
                 .orElseThrow();
         assertEquals("beta-lactams", hit.getAntibiotic());
-        assertTrue(hit.getMatchPercentage() >= 90.0, "identity should be high, got " + hit.getMatchPercentage());
+        assertTrue(hit.getMatchPercentage() >= 90.0,
+                "identity should be high, got " + hit.getMatchPercentage());
     }
 
     @Test
     void unrelated_sequence_produces_no_strict_hit() {
-        String prefix = versionService.activePrefix();
+        String versionPrefix = versionService.activeDataPrefix(KMER_PREFIX);
         processingService.seedReferenceGeneWithPrefix(
-                prefix, GENE_ID, GENE_SEQ, "beta-lactams", K, HASHES, BANDS, ROWS);
+                versionPrefix, KMER_PREFIX, GENE_ID, GENE_SEQ, "beta-lactams",
+                K, HASHES, BANDS, ROWS);
 
         String sessionId = UUID.randomUUID().toString();
         String unrelated = "GGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCCGGGGCCCC";
-        processingService.queryLshAndIncrementDynamic(unrelated, sessionId, K, HASHES, BANDS, ROWS);
+        processingService.queryLshAndIncrementDynamic(
+                unrelated, sessionId, KMER_PREFIX, K, HASHES, BANDS, ROWS);
 
         List<ReportResult> report = processingService.verifyCandidatesFromRedis(
-                sessionId, DnaProcessingService.DetectionProfile.STRICT);
+                sessionId, DnaProcessingService.DetectionProfile.STRICT, KMER_PREFIX);
 
         assertTrue(report.stream().noneMatch(r -> GENE_ID.equals(r.getGeneId())),
                 "unrelated read must not produce a strict hit");
@@ -100,7 +121,6 @@ class DnaProcessingServiceIT {
 
     private static void assumeNativeLibraryLoaded() {
         try {
-            // touch the JNA interface — fails fast if .so is missing
             Class.forName("by.vs.dnaamrscreener.jna.DNAHasherLib");
             by.vs.dnaamrscreener.jna.DNAHasherLib.INSTANCE.getClass();
         } catch (Throwable t) {

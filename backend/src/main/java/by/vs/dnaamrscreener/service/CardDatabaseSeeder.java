@@ -141,17 +141,17 @@ public class CardDatabaseSeeder implements CommandLineRunner {
                     try {
                         processingService.seedReferenceGeneWithPrefix(
                                 prefixForStrict,
+                                K21_KEY,
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                K21_KEY,
                                 defStrictKmer, defStrictHashes, defStrictBands, defStrictRows);
                         processingService.seedReferenceGeneWithPrefix(
                                 prefixForRelaxed,
+                                K17_KEY,
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                K17_KEY,
                                 defRelaxedKmer, defRelaxedHashes, defRelaxedBands, defRelaxedRows);
                     } catch (Exception e) {
                         failed.incrementAndGet();

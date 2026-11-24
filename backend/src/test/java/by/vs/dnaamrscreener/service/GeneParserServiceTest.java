@@ -33,7 +33,6 @@ class GeneParserServiceTest {
 
         @Test
         void card_style_pipe_header() {
-            // typical CARD FASTA header fragment
             String h = "gb|NG_047482.1|+|blaNDM-1|NDM-1 [Klebsiella pneumoniae]";
             assertEquals("NDM-1", parser.parseGeneName(h));
         }

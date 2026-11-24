@@ -7,10 +7,7 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Shared Redis Testcontainers helper. Uses a single standalone instance for both
- * gene and session templates (production session is cluster; tests use standalone).
- */
+
 public final class RedisContainerSupport {
 
     public static final String REDIS_IMAGE = "redis:7-alpine";

@@ -15,6 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIf("by.vs.dnaamrscreener.support.RedisContainerSupport#dockerAvailable")
 class DbVersionServiceIT {
 
+    private static final String PREFIX = "k21";
+
     @Container
     static GenericContainer<?> redis = RedisContainerSupport.createRedisContainer();
 
@@ -25,40 +27,53 @@ class DbVersionServiceIT {
     void setUp() {
         geneRedis = RedisContainerSupport.createTemplate(redis);
         geneRedis.getConnectionFactory().getConnection().serverCommands().flushAll();
-        service = new DbVersionService(geneRedis);
+        service = new DbVersionService(geneRedis, new KmerPrefixService(geneRedis));
     }
 
     @Test
     void defaults_to_blue_and_persists_switch() {
-        assertEquals(DbVersionService.BLUE, service.getActiveSlot());
-        assertEquals("blue:", service.activePrefix());
+        assertEquals(DbVersionService.BLUE, service.getActiveSlot(PREFIX));
+        assertEquals("k21:blue:", service.activeDataPrefix(PREFIX));
 
-        String next = service.switchActive();
+        String next = service.switchActive(PREFIX);
         assertEquals(DbVersionService.GREEN, next);
 
-        // new instance should read from Redis, not only local cache
-        DbVersionService fresh = new DbVersionService(geneRedis);
-        assertEquals(DbVersionService.GREEN, fresh.getActiveSlot());
-        assertEquals(DbVersionService.BLUE, fresh.getInactiveSlot());
+        DbVersionService fresh = new DbVersionService(geneRedis, new KmerPrefixService(geneRedis));
+        assertEquals(DbVersionService.GREEN, fresh.getActiveSlot(PREFIX));
+        assertEquals(DbVersionService.BLUE, fresh.getInactiveSlot(PREFIX));
     }
 
     @Test
     void setActiveSlot_roundtrip() {
-        service.setActiveSlot(DbVersionService.GREEN);
-        assertEquals("green:", service.activePrefix());
-        assertEquals("blue:", service.inactivePrefix());
+        service.setActiveSlot(PREFIX, DbVersionService.GREEN);
+        assertEquals("k21:green:", service.activeDataPrefix(PREFIX));
+        assertEquals("k21:blue:", service.inactiveDataPrefix(PREFIX));
     }
 
     @Test
     void clearSlot_removes_keys_with_prefix() {
-        service.setActiveSlot(DbVersionService.BLUE);
-        geneRedis.opsForValue().set("blue:gene:meta:test1", "x");
-        geneRedis.opsForValue().set("blue:lsh:b:0:h:1", "y");
-        geneRedis.opsForValue().set("green:gene:meta:keep", "z");
+        service.setActiveSlot(PREFIX, DbVersionService.BLUE);
+        geneRedis.opsForValue().set("k21:blue:gene:meta:test1", "x");
+        geneRedis.opsForValue().set("k21:blue:k21lsh:b:0:h:1", "y");
+        geneRedis.opsForValue().set("k21:green:gene:meta:keep", "z");
 
-        long deleted = service.clearSlot(DbVersionService.BLUE);
+        long deleted = service.clearSlot(PREFIX, DbVersionService.BLUE);
         assertTrue(deleted >= 2);
-        assertNull(geneRedis.opsForValue().get("blue:gene:meta:test1"));
-        assertEquals("z", geneRedis.opsForValue().get("green:gene:meta:keep"));
+        assertNull(geneRedis.opsForValue().get("k21:blue:gene:meta:test1"));
+        assertEquals("z", geneRedis.opsForValue().get("k21:green:gene:meta:keep"));
+    }
+
+    @Test
+    void status_reports_key_counts_per_slot() {
+        service.setActiveSlot(PREFIX, DbVersionService.BLUE);
+        geneRedis.opsForValue().set("k21:blue:a", "1");
+        geneRedis.opsForValue().set("k21:blue:b", "2");
+        geneRedis.opsForValue().set("k21:green:c", "3");
+
+        DbVersionService.DbStatus status = service.status(PREFIX);
+        assertEquals(PREFIX, status.prefix());
+        assertEquals(DbVersionService.BLUE, status.activeSlot());
+        assertEquals(2L, status.blueKeyCount());
+        assertEquals(1L, status.greenKeyCount());
     }
 }

@@ -99,7 +99,7 @@ public class DnaProcessingService {
             long[] subArray = Arrays.copyOfRange(signature, startIdx, startIdx + rowsPerBand);
             long bandHash = DNAHasherLib.INSTANCE.XXH3_64bits_withSeed(
                     subArray, subArray.length, band);
-            bucketKeys.add(versionPrefix + kmerPrefix + "lsh:b:" + band + ":h:" + bandHash);
+            bucketKeys.add(versionPrefix + kmerPrefix + ":lsh:b:" + band + ":h:" + bandHash);
         }
 
         if (bucketKeys.isEmpty()) {
@@ -289,7 +289,7 @@ public class DnaProcessingService {
                 long bandHash = DNAHasherLib.INSTANCE.XXH3_64bits_withSeed(
                         subArray, subArray.length, band);
 
-                String bucketKey = versionPrefix + kmerPrefix + "lsh:b:" + band + ":h:" + bandHash;
+                String bucketKey = versionPrefix + kmerPrefix + ":lsh:b:" + band + ":h:" + bandHash;
                 connection.setCommands().sAdd(bucketKey.getBytes(), geneId.getBytes());
             }
             return null;

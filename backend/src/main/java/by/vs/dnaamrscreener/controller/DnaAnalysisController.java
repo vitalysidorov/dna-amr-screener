@@ -169,7 +169,7 @@ public class DnaAnalysisController {
             }
 
             waitAll(batchFutures);
-            sessionRedis.expire("analysis:hits:" + sessionId, Duration.ofMinutes(40));
+            sessionRedis.expire("analysis:{" + sessionId + "}:hits", Duration.ofMinutes(40));
 
             if (!finalize) {
                 releaseLock(lockKey);

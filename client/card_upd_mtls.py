@@ -1,11 +1,11 @@
+from __future__ import annotations
+from pathlib import Path
+
 import argparse
+import hashlib
 import json
 import sys
-import uuid
 import requests
-import hashlib
-import os
-from pathlib import Path
 
 
 def chunk_generator(file_path: str, chunk_size: int = 64 * 1024):
@@ -20,78 +20,144 @@ def get_file_hash(file_path: str) -> str:
     hasher = hashlib.md5()
     with open(file_path, "rb") as f:
         hasher.update(f.read(1024 * 1024 * 5))
-    return f"{file_path}_{hasher.hexdigest()}"
+    return f"{Path(file_path).name}_{hasher.hexdigest()}"
 
-def send_file(url: str, file_path: str, file_hash: str, cert: tuple[str, str],
-              verify: str | bool) -> requests.Response:
-    headers = {
-        "Content-Type": "application/octet-stream",
-
-        'X-File-Hash': file_hash,
-        'X-LSH-Kmer-Size': '15',
-        'X-LSH-Num-Hashes': '100',
-        'X-LSH-Bands': '20',
-        'X-LSH-Rows-Per-Band': '5'
+def build_lsh_headers(
+    kmer_size: int | None,
+    num_hashes: int | None,
+    bands: int | None,
+    rows_per_band: int | None,
+) -> dict[str, str]:
+    values = (kmer_size, num_hashes, bands, rows_per_band)
+    if all(v is None for v in values):
+        return {}
+    if any(v is None for v in values):
+        raise SystemExit(
+            "for custom LSH params provide all of: "
+            "--kmer-size --num-hashes --bands --rows-per-band"
+        )
+    return {
+        "X-LSH-Kmer-Size": str(kmer_size),
+        "X-LSH-Num-Hashes": str(num_hashes),
+        "X-LSH-Bands": str(bands),
+        "X-LSH-Rows-Per-Band": str(rows_per_band),
     }
 
-    response = requests.post(
-        url,
-        headers=headers,
-        data=chunk_generator(file_path),
-        cert=cert,
-        verify=verify,
-        timeout=300,
-    )
-    return response
+def print_response(resp: requests.Response) -> None:
+    print(f"resp: {resp.status_code}")
+    try:
+        print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
+    except json.JSONDecodeError:
+        print(resp.text)
+    if resp.status_code >= 400:
+        sys.exit(1)
 
-def main():
-    parser = argparse.ArgumentParser(description="client for update db dna-amr-screener")
-    parser.add_argument("endpoint", choices=["seed", "switch", "status", "inactive",
-                                             "activate/blue", "activate/green"], help="endpoint")
-    parser.add_argument("--path", type=Path, required=False, help="path to db file")
-    parser.add_argument("--cert", type=Path, required=True, help="client.crt")
-    parser.add_argument("--key", type=Path, required=True, help="client.key")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="mTLS client for /api/card endpoints")
+    parser.add_argument(
+        "endpoint",
+        choices=["seed", "switch", "status", "inactive", "activate/blue", "activate/green", "newIndex"],
+        help="card API action",
+    )
+    parser.add_argument(
+        "--kmer-prefix",
+        default="k21",
+        help="index prefix (default: k21)",
+    )
+    parser.add_argument("--path", type=Path, default=None, help="FASTA path (seed only)")
+    parser.add_argument("--url", default="https://localhost:8443/api/card", help="card API base URL")
+    parser.add_argument("--cert", type=Path, required=True, help="client certificate (PEM)")
+    parser.add_argument("--key", type=Path, required=True, help="client private key (PEM)")
+    parser.add_argument(
+        "--cacert",
+        type=Path,
+        default=None,
+        help="CA bundle to verify server cert (default: system CAs)",
+    )
+    parser.add_argument("--kmer-size", type=int, default=None, help="X-LSH-Kmer-Size")
+    parser.add_argument("--num-hashes", type=int, default=None, help="X-LSH-Num-Hashes")
+    parser.add_argument("--bands", type=int, default=None, help="X-LSH-Bands")
+    parser.add_argument("--rows-per-band", type=int, default=None, help="X-LSH-Rows-Per-Band")
     args = parser.parse_args()
 
-    base_url = "http://localhost:8080/api/card/"
+    if not args.cert.is_file() or not args.key.is_file():
+        print("cert/key not found", file=sys.stderr)
+        sys.exit(1)
+
+    base = args.url.rstrip("/") + "/"
+    kmer_prefix = args.kmer_prefix.lower()
+    params = {"kmerPrefix": kmer_prefix}
     cert = (str(args.cert), str(args.key))
     verify: str | bool = str(args.cacert) if args.cacert else True
+    lsh_headers = build_lsh_headers(
+        args.kmer_size, args.num_hashes, args.bands, args.rows_per_band
+    )
+    tls = {"cert": cert, "verify": verify}
 
     try:
         if args.endpoint == "seed":
+            if args.path is None:
+                print("--path is required for seed", file=sys.stderr)
+                sys.exit(1)
             path = Path(args.path)
-            if not path.exists():
+            if not path.is_file():
                 print(f"file not found: {path}", file=sys.stderr)
                 sys.exit(1)
-            resp = send_file(url=str(base_url + args.endpoint), file_path=str(path), file_hash=get_file_hash(str(path)),
-                             cert=cert, verify=verify)
-            if resp.status_code != 200:
-                print(f"error ({resp2.status_code}):", file=sys.stderr)
-                print(resp.text, file=sys.stderr)
+            if kmer_prefix not in ("k17", "k21") and not lsh_headers:
+                print(
+                    f"custom prefix '{kmer_prefix}' requires LSH headers for seed",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
+            headers = {
+                "Content-Type": "application/octet-stream",
+                "X-File-Hash": get_file_hash(str(path)),
+                **lsh_headers,
+            }
+            resp = requests.post(
+                base + "seed",
+                params=params,
+                headers=headers,
+                data=chunk_generator(str(path)),
+                timeout=3600,
+                **tls,
+            )
+
+        elif args.endpoint == "newIndex":
+            if any(v is None for v in (args.kmer_size, args.num_hashes, args.bands, args.rows_per_band)):
+                print(
+                    "newIndex requires --kmer-size --num-hashes --bands --rows-per-band",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            resp = requests.post(
+                base + "newIndex",
+                params=params,
+                headers=lsh_headers,
+                timeout=3600,
+                **tls,
+            )
 
         elif args.endpoint == "switch":
-            resp = requests.post(str(base_url + args.endpoint), cert=cert, verify=verify, timeout=10)
+            resp = requests.post(base + "switch", params=params, timeout=30, **tls)
 
         elif args.endpoint == "inactive":
-            resp = requests.delete(str(base_url + args.endpoint), cert=cert, verify=verify, timeout=10)
+            resp = requests.delete(base + "inactive", params=params, timeout=60, **tls)
 
         elif args.endpoint == "activate/blue":
-            resp = requests.post(str(base_url + args.endpoint), cert=cert, verify=verify, timeout=10)
+            resp = requests.post(base + "activate/blue", params=params, timeout=30, **tls)
 
         elif args.endpoint == "activate/green":
-            resp = requests.post(str(base_url + args.endpoint), cert=cert, verify=verify, timeout=10)
+            resp = requests.post(base + "activate/green", params=params, timeout=30, **tls)
 
         elif args.endpoint == "status":
-            resp = requests.get(str(base_url + args.endpoint), cert=cert, verify=verify, timeout=5)
+            resp = requests.get(base + "status", params=params, timeout=15, **tls)
 
-        print(f"resp: {resp.status_code}")
+        else:
+            print(f"unknown endpoint: {args.endpoint}", file=sys.stderr)
+            sys.exit(1)
 
-        try:
-            data = resp.json()
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-        except json.JSONDecodeError:
-            print(resp.text)
+        print_response(resp)
 
     except requests.exceptions.RequestException as e:
         print(f"ERROR: {e}", file=sys.stderr)

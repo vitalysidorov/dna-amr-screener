@@ -36,27 +36,27 @@ spring:
 screener:
   lsh:
     k21:
-      kmer-size: ${SCREENER_LSH_KMER_SIZE:21}
-      num-hashes: ${SCREENER_LSH_NUM_HASHES:100}
-      bands: ${SCREENER_LSH_BANDS:25}
-      rows-per-band: ${SCREENER_LSH_ROWS_PER_BAND:4}
+      kmer-size: ${SCREENER_LSH_K21_KMER_SIZE:21}
+      num-hashes: ${SCREENER_LSH_K21_NUM_HASHES:100}
+      bands: ${SCREENER_LSH_K21_BANDS:25}
+      rows-per-band: ${SCREENER_LSH_K21_ROWS_PER_BAND:4}
     k17:
-      kmer-size: ${SCREENER_LSH_KMER_SIZE:17}
-      num-hashes: ${SCREENER_LSH_NUM_HASHES:100}
-      bands: ${SCREENER_LSH_BANDS:20}
-      rows-per-band: ${SCREENER_LSH_ROWS_PER_BAND:5}
+      kmer-size: ${SCREENER_LSH_K17_KMER_SIZE:17}
+      num-hashes: ${SCREENER_LSH_K17_NUM_HASHES:100}
+      bands: ${SCREENER_LSH_K17_BANDS:20}
+      rows-per-band: ${SCREENER_LSH_K17_ROWS_PER_BAND:5}
     max-reads-per-gene: ${SCREENER_LSH_MAX_READS_PER_GENE:80}
     min-avg-phred: ${SCREENER_LSH_MIN_AVG_PHRED:20.0}
 
   hit-criteria:
     strict:
       primary:
-        min-identity: ${SCREENER_HIT_CRITERIA_STRICT_PRIMARY_MIN_IDENTITY}
+        min-identity: ${SCREENER_HIT_CRITERIA_STRICT_PRIMARY_MIN_IDENTITY:0.95}
         min-breadth-1x: ${SCREENER_HIT_CRITERIA_STRICT_PRIMARY_MIN_BREADTH_1X:0.80}
         min-breadth-2x: ${SCREENER_HIT_CRITERIA_STRICT_PRIMARY_MIN_BREADTH_2X:0.40}
         min-mean-depth: ${SCREENER_HIT_CRITERIA_STRICT_PRIMARY_MIN_MEAN_DEPTH:5.0}
       secondary:
-        min-identity: ${SCREENER_HIT_CRITERIA_STRICT_SECONDARY_MIN_IDENTITY}
+        min-identity: ${SCREENER_HIT_CRITERIA_STRICT_SECONDARY_MIN_IDENTITY:0.90}
         min-breadth-1x: ${SCREENER_HIT_CRITERIA_STRICT_SECONDARY_MIN_BREADTH_1X:0.80}
         min-breadth-2x: ${SCREENER_HIT_CRITERIA_STRICT_SECONDARY_MIN_BREADTH_2X:0.50}
         min-mean-depth: ${SCREENER_HIT_CRITERIA_STRICT_SECONDARY_MIN_MEAN_DEPTH:8.0}
