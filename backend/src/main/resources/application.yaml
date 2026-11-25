@@ -5,9 +5,9 @@ server:
 spring:
   application:
     name: dna-amr-screener
-    seed-parallelism: ${SPRING_APP_SEED_PARALLELISM:16}
-    analyze-parallelism: ${SPRING_APP_ANALYZE_PARALLELISM:48}
-    batch-size: ${SPRING_APP_BATCH_SIZE:64}
+    seed-parallelism: ${SPRING_APP_SEED_PARALLELISM:8}
+    analyze-parallelism: ${SPRING_APP_ANALYZE_PARALLELISM:8}
+    batch-size: ${SPRING_APP_BATCH_SIZE:32}
     session-ttl-seconds: ${SPRING_APP_SESSION_TTL_SECONDS:3600}
   data:
     redis:
@@ -20,8 +20,8 @@ spring:
         lettuce:
           pool:
             min-idle: ${SPRING_DATA_REDIS_GENE_MIN_IDLE:4}
-            max-idle: ${SPRING_DATA_REDIS_GENE_MAX_IDLE:32}
-            max-total: ${SPRING_DATA_REDIS_GENE_MAX_TOTAL:64}
+            max-idle: ${SPRING_DATA_REDIS_GENE_MAX_IDLE:16}
+            max-total: ${SPRING_DATA_REDIS_GENE_MAX_TOTAL:32}
       session:
         password: ${SPRING_DATA_REDIS_SESSION_PASSWORD:}
         timeout: ${SPRING_DATA_REDIS_SESSION_TIMEOUT:10s}
@@ -30,8 +30,8 @@ spring:
         lettuce:
           pool:
             min-idle: ${SPRING_DATA_REDIS_SESSION_MIN_IDLE:4}
-            max-idle: ${SPRING_DATA_REDIS_SESSION_MAX_IDLE:32}
-            max-total: ${SPRING_DATA_REDIS_SESSION_MAX_TOTAL:64}
+            max-idle: ${SPRING_DATA_REDIS_SESSION_MAX_IDLE:16}
+            max-total: ${SPRING_DATA_REDIS_SESSION_MAX_TOTAL:32}
 
 screener:
   lsh:
