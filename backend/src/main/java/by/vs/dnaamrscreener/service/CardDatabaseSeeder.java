@@ -36,22 +36,22 @@ public class CardDatabaseSeeder implements CommandLineRunner {
     private final GeneParserService geneParserService;
     private final DbVersionService versionService;
 
-    @Value("${screener.lsh.strict.kmer-size}")
+    @Value("${screener.lsh.k21.kmer-size}")
     private Integer defStrictKmer;
-    @Value("${screener.lsh.strict.num-hashes}")
+    @Value("${screener.lsh.k21.num-hashes}")
     private Integer defStrictHashes;
-    @Value("${screener.lsh.strict.bands}")
+    @Value("${screener.lsh.k21.bands}")
     private Integer defStrictBands;
-    @Value("${screener.lsh.strict.rows-per-band}")
+    @Value("${screener.lsh.k21.rows-per-band}")
     private Integer defStrictRows;
 
-    @Value("${screener.lsh.relaxed.kmer-size}")
+    @Value("${screener.lsh.k17.kmer-size}")
     private Integer defRelaxedKmer;
-    @Value("${screener.lsh.relaxed.num-hashes}")
+    @Value("${screener.lsh.k17.num-hashes}")
     private Integer defRelaxedHashes;
-    @Value("${screener.lsh.relaxed.bands}")
+    @Value("${screener.lsh.k17.bands}")
     private Integer defRelaxedBands;
-    @Value("${screener.lsh.relaxed.rows-per-band}")
+    @Value("${screener.lsh.k17.rows-per-band}")
     private Integer defRelaxedRows;
 
     public CardDatabaseSeeder(@Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis,

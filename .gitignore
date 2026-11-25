@@ -83,7 +83,6 @@ build/
 .project
 .settings
 .springBeans
-*.fasta
 *.fastq
 *.md
 .sts4-cache
