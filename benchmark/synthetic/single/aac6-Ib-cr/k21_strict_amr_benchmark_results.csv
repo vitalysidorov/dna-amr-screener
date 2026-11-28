@@ -1,0 +1,2 @@
+﻿sample,profile,level,n_pred,n_truth,TP,FP,FN,precision,recall,f1,TP_genes,FP_genes,FN_genes,top1_hits,top1_total,top1_rate,truth_ranks
+aac6-Ib-cr_k21,strict,gene,20,1,1,19,0,0.05,1.0,0.0952,aac(6')-ib-cr1,aac(6')-ib; aac(6')-ib'; aac(6')-ib-cr10; aac(6')-ib-cr11; aac(6')-ib-cr3; aac(6')-ib-cr4; aac(6')-ib-cr5; aac(6')-ib-cr6; aac(6')-ib-cr7; aac(6')-ib-cr8; aac(6')-ib-cr9; aac(6')-ib10; aac(6')-ib11; aac(6')-ib3; aac(6')-ib4; aac(6')-ib8; aac(6')-ib9; aac-6-ib-su; aac6-ib-hz,,1,1,1.0,aac(6')-ib-cr1: ранг 1 из 10

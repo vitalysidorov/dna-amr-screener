@@ -164,6 +164,8 @@ public class DnaProcessingService {
             Set<ZSetOperations.TypedTuple<String>> candidates =
                     sessionRedis.opsForZSet().reverseRangeWithScores(redisZsetKey, 0, numberOfCandidates);
 
+            log.info("candidates: {}", candidates);
+
             if (candidates == null || candidates.isEmpty()) {
                 return report;
             }

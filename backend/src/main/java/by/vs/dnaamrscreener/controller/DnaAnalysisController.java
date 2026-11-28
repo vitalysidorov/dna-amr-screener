@@ -185,6 +185,7 @@ public class DnaAnalysisController {
 
             List<ReportResult> report = processingService.verifyCandidatesFromRedis(
                     sessionId, detProfile, finalKmerPrefix);
+            report.sort(Comparator.comparingDouble(ReportResult::getMatchPercentage).reversed());
 
             releaseLock(lockKey);
 

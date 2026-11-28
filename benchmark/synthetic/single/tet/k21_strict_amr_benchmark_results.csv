@@ -1,0 +1,2 @@
+﻿sample,profile,level,n_pred,n_truth,TP,FP,FN,precision,recall,f1,TP_genes,FP_genes,FN_genes,top1_hits,top1_total,top1_rate,truth_ranks
+teta_sim_k21,strict,gene,1,1,1,0,0,1.0,1.0,1.0,teta(p),,,1,1,1.0,teta(p): ранг 1 из 1

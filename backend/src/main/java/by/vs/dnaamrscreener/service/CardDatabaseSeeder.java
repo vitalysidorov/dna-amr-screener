@@ -37,22 +37,22 @@ public class CardDatabaseSeeder implements CommandLineRunner {
     private final DbVersionService versionService;
 
     @Value("${screener.lsh.k21.kmer-size}")
-    private Integer defStrictKmer;
+    private Integer defK21Kmer;
     @Value("${screener.lsh.k21.num-hashes}")
-    private Integer defStrictHashes;
+    private Integer defK21Hashes;
     @Value("${screener.lsh.k21.bands}")
-    private Integer defStrictBands;
+    private Integer defK21Bands;
     @Value("${screener.lsh.k21.rows-per-band}")
-    private Integer defStrictRows;
+    private Integer defK21Rows;
 
     @Value("${screener.lsh.k17.kmer-size}")
-    private Integer defRelaxedKmer;
+    private Integer defK17Kmer;
     @Value("${screener.lsh.k17.num-hashes}")
-    private Integer defRelaxedHashes;
+    private Integer defK17Hashes;
     @Value("${screener.lsh.k17.bands}")
-    private Integer defRelaxedBands;
+    private Integer defK17Bands;
     @Value("${screener.lsh.k17.rows-per-band}")
-    private Integer defRelaxedRows;
+    private Integer defK17Rows;
 
     public CardDatabaseSeeder(@Qualifier("geneRedisTemplate") StringRedisTemplate geneRedis,
                               DnaProcessingService processingService,
@@ -145,14 +145,14 @@ public class CardDatabaseSeeder implements CommandLineRunner {
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                defStrictKmer, defStrictHashes, defStrictBands, defStrictRows);
+                                defK21Kmer, defK21Hashes, defK21Bands, defK21Rows);
                         processingService.seedReferenceGeneWithPrefix(
                                 prefixForRelaxed,
                                 K17_KEY,
                                 geneData[0],
                                 geneData[1],
                                 geneData[2],
-                                defRelaxedKmer, defRelaxedHashes, defRelaxedBands, defRelaxedRows);
+                                defK17Kmer, defK17Hashes, defK17Bands, defK17Rows);
                     } catch (Exception e) {
                         failed.incrementAndGet();
                         log.error("[CARD] failed to seed gene {}", geneData[0], e);

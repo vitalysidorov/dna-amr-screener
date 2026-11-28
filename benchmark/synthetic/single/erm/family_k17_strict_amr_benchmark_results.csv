@@ -1,0 +1,3 @@
+﻿sample,profile,level,n_pred,n_truth,TP,FP,FN,precision,recall,f1,TP_genes,FP_genes,FN_genes,top1_hits,top1_total,top1_rate,truth_ranks
+ermb_sim_k17,strict,gene,1,1,1,0,0,1.0,1.0,1.0,ermb,,,1,1,1.0,ermb: ранг 1 из 1
+ermb_sim_k17,strict,family,1,1,1,0,0,1.0,1.0,1.0,ermb,,,,,,

@@ -73,7 +73,7 @@ extern "C" {
             return;
         }
 
-        const std::string_view dna(dna_str);
+        const std::string_view dna(dna_str + get_reverse_complement(dna_str));
         const size_t len = dna.length();
 
         if (len < static_cast<size_t>(k)) {
